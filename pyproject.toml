@@ -11,6 +11,9 @@ dependencies = [
     "datasets",
     "requests",
     "huggingface-hub",
+    "grpcio",
+    "grpcio-tools",
+    "protobuf",
 ]
 
 [tool.setuptools.packages.find]

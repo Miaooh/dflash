@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package dflash;
+
+service DFlashCloud {
+  rpc Prefill(PrefillRequest) returns (PrefillResponse);
+  rpc GetEmbedding(EmbeddingRequest) returns (EmbeddingResponse);
+  rpc GetLogits(LogitsRequest) returns (LogitsResponse);
+  rpc Verify(VerifyRequest) returns (VerifyResponse);
+}
+
+message TensorProto {
+  bytes data = 1;
+  repeated int64 shape = 2;
+  string dtype = 3;
+}
+
+message PrefillRequest {
+  TensorProto input_ids = 1;
+}
+
+message PrefillResponse {
+  TensorProto hidden_states = 1;
+  TensorProto first_token_logits = 2;
+}
+
+message EmbeddingRequest {
+  TensorProto token_ids = 1;
+}
+
+message EmbeddingResponse {
+  TensorProto embeddings = 1;
+}
+
+message LogitsRequest {
+  TensorProto hidden_states = 1;
+}
+
+message LogitsResponse {
+  TensorProto logits = 1;
+}
+
+message VerifyRequest {
+  TensorProto candidate_ids = 1;
+  TensorProto position_ids = 2;
+  int64 crop_to = 3;  // cloud should crop KV cache to this sequence length before verification
+}
+
+message VerifyResponse {
+  TensorProto logits = 1;              // full-sequence logits for acceptance and posterior sampling
+  TensorProto hidden_states = 2;       // hidden states for next draft round
+}
