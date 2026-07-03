@@ -1,10 +1,10 @@
+import argparse
 import gc
 import io
 import time
-import argparse
 import torch
 import grpc
-from transformers import AutoModel, AutoTokenizer, DynamicCache
+from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer, DynamicCache
 
 import dflash_service_pb2
 import dflash_service_pb2_grpc
@@ -15,7 +15,6 @@ TARGET_PATH = "/home/xzh/models/Qwen3-4B"
 DRAFT_PATH = "/home/xzh/models/z-lab/Qwen3-4B-DFlash-b16"
 DEVICE = "cuda:0"
 CLOUD_ADDR = "192.168.100.2:50051"
-
 GRPC_OPTIONS = [
     ("grpc.max_send_message_length", 256 * 1024 * 1024),
     ("grpc.max_receive_message_length", 256 * 1024 * 1024),
@@ -40,12 +39,10 @@ def proto_to_tensor(proto, device):
     return tensor.to(device)
 
 
-def rpc_call_time(start):
-    return time.perf_counter() - start
-
-
 def dflash_generate_edge_cloud(
     draft,
+    target_embed,
+    target_lm_head,
     tokenizer,
     stub,
     input_ids,
@@ -55,12 +52,10 @@ def dflash_generate_edge_cloud(
     block_size=None,
     mask_token_id=None,
 ):
-    """Edge-side DFlash generation using cloud target via gRPC (Method 2).
+    """Edge-side DFlash generation using cloud target via gRPC.
 
-    In this mode the edge does NOT hold target.embed_tokens or target.lm_head.
-    Every draft step therefore requires two extra RPCs:
-        1. GetEmbedding(block_output_ids) -> noise_embedding
-        2. GetLogits(draft_output) -> draft_logits
+    The edge holds the draft model plus the target's embed_tokens and lm_head.
+    The cloud holds the full target model and computes hidden states.
     """
     num_input_tokens = input_ids.shape[1]
     max_length = num_input_tokens + max_new_tokens
@@ -90,8 +85,6 @@ def dflash_generate_edge_cloud(
         "prefill_time": prefill_time,
         "total_hidden_states_bytes": len(prefill_response.hidden_states.data),
         "total_token_candidates_bytes": len(prefill_response.first_token_logits.data),
-        "total_embedding_bytes": 0,
-        "total_logits_bytes": 0,
         "total_verify_bytes": 0,
         "total_rpc_time": prefill_time,
         "total_draft_time": 0.0,
@@ -107,18 +100,8 @@ def dflash_generate_edge_cloud(
         block_position_ids = position_ids[:, start : start + block_size]
 
         if block_size > 1:
-            # RPC 1: cloud -> edge, get noise embedding
             t0 = time.perf_counter()
-            emb_response = stub.GetEmbedding(
-                dflash_service_pb2.EmbeddingRequest(token_ids=tensor_to_proto(block_output_ids))
-            )
-            emb_rpc_time = time.perf_counter() - t0
-            stats["total_embedding_bytes"] += len(emb_response.embeddings.data)
-            stats["total_rpc_time"] += emb_rpc_time
-            noise_embedding = proto_to_tensor(emb_response.embeddings, DEVICE)
-
-            # Edge: run draft
-            t0 = time.perf_counter()
+            noise_embedding = target_embed(block_output_ids)
             draft_output = draft(
                 target_hidden=target_hidden,
                 noise_embedding=noise_embedding,
@@ -128,27 +111,14 @@ def dflash_generate_edge_cloud(
                 is_causal=False,
             )
             past_key_values_draft.crop(start)
-            draft_hidden_for_logits = draft_output[:, 1 - block_size :, :]
-
-            # RPC 2: edge -> cloud, get draft logits from lm_head
-            t1 = time.perf_counter()
-            logits_response = stub.GetLogits(
-                dflash_service_pb2.LogitsRequest(hidden_states=tensor_to_proto(draft_hidden_for_logits))
-            )
-            logits_rpc_time = time.perf_counter() - t1
-            stats["total_logits_bytes"] += len(logits_response.logits.data)
-            stats["total_rpc_time"] += logits_rpc_time
-            draft_logits = proto_to_tensor(logits_response.logits, DEVICE)
-
+            draft_logits = target_lm_head(draft_output[:, 1 - block_size :, :])
             block_output_ids[:, 1:] = sample(draft_logits, temperature)
             draft_time = time.perf_counter() - t0
             stats["total_draft_time"] += draft_time
 
-            stats["total_token_candidates_bytes"] += (
-                len(tensor_to_proto(block_output_ids).data)
-            )
+            stats["total_token_candidates_bytes"] += len(tensor_to_proto(block_output_ids).data)
 
-        # RPC 3: cloud verify candidates and return hidden states for next round
+        # Cloud verify candidates and return hidden states for next round
         t0 = time.perf_counter()
         verify_response = stub.Verify(
             dflash_service_pb2.VerifyRequest(
@@ -158,22 +128,22 @@ def dflash_generate_edge_cloud(
             )
         )
         verify_rpc_time = time.perf_counter() - t0
-        stats["total_verify_bytes"] += (
-            len(verify_response.logits.data) + len(verify_response.hidden_states.data)
-        )
+        stats["total_verify_bytes"] += len(verify_response.logits.data) + len(verify_response.hidden_states.data)
         stats["total_rpc_time"] += verify_rpc_time
         stats["total_hidden_states_bytes"] += len(verify_response.hidden_states.data)
 
-        posterior_logits = proto_to_tensor(verify_response.logits, DEVICE)
+        verify_logits = proto_to_tensor(verify_response.logits, DEVICE)
         target_hidden = proto_to_tensor(verify_response.hidden_states, DEVICE)
 
-        posterior = sample(posterior_logits, temperature)
+        posterior = sample(verify_logits[:, -1:, :], temperature)
         acceptance_length = (block_output_ids[:, 1:] == posterior[:, :-1]).cumprod(dim=1).sum(dim=1)[0].item()
-        target_hidden = target_hidden[:, : acceptance_length + 1, :]
         output_ids[:, start : start + acceptance_length + 1] = block_output_ids[:, : acceptance_length + 1]
         output_ids[:, start + acceptance_length + 1] = posterior[:, acceptance_length]
         start += acceptance_length + 1
         stats["acceptance_lengths"].append(acceptance_length + 1)
+
+        if block_size > 1:
+            target_hidden = target_hidden[:, :acceptance_length + 1, :]
 
         if stop_token_ids is not None and any(
             stop_token_id in output_ids[:, num_input_tokens:] for stop_token_id in stop_token_ids
@@ -206,6 +176,15 @@ def main():
         device_map=DEVICE,
     ).eval()
 
+    print("Loading target embedding and lm_head on edge...")
+    target_model = AutoModelForCausalLM.from_pretrained(
+        TARGET_PATH,
+        dtype="auto",
+        device_map=DEVICE,
+    ).eval()
+    target_embed = target_model.model.embed_tokens
+    target_lm_head = target_model.lm_head
+
     print(f"Connecting to cloud target at {CLOUD_ADDR}...")
     channel = grpc.insecure_channel(CLOUD_ADDR, options=GRPC_OPTIONS)
     stub = dflash_service_pb2_grpc.DFlashCloudStub(channel)
@@ -226,6 +205,8 @@ def main():
     start = time.perf_counter()
     output, stats = dflash_generate_edge_cloud(
         draft=draft,
+        target_embed=target_embed,
+        target_lm_head=target_lm_head,
         tokenizer=tokenizer,
         stub=stub,
         input_ids=input_ids,
@@ -247,8 +228,6 @@ def main():
     print(f"Total draft time: {stats['total_draft_time']:.2f} s")
     print(f"Total hidden states bytes: {stats['total_hidden_states_bytes'] / 1024**2:.2f} MB")
     print(f"Total token candidates bytes: {stats['total_token_candidates_bytes'] / 1024:.2f} KB")
-    print(f"Total embedding bytes: {stats['total_embedding_bytes'] / 1024**2:.2f} MB")
-    print(f"Total draft logits bytes: {stats['total_logits_bytes'] / 1024**2:.2f} MB")
     print(f"Total verify response bytes: {stats['total_verify_bytes'] / 1024**2:.2f} MB")
 
     generated_text = tokenizer.decode(output[0], skip_special_tokens=False)
@@ -256,7 +235,7 @@ def main():
     print(generated_text)
     print("=================")
 
-    del draft, output
+    del draft, target_model, output
     gc.collect()
     torch.cuda.empty_cache()
 

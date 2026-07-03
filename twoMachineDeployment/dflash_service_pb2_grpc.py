@@ -39,16 +39,6 @@ class DFlashCloudStub:
                 request_serializer=dflash__service__pb2.PrefillRequest.SerializeToString,
                 response_deserializer=dflash__service__pb2.PrefillResponse.FromString,
                 _registered_method=True)
-        self.GetEmbedding = channel.unary_unary(
-                '/dflash.DFlashCloud/GetEmbedding',
-                request_serializer=dflash__service__pb2.EmbeddingRequest.SerializeToString,
-                response_deserializer=dflash__service__pb2.EmbeddingResponse.FromString,
-                _registered_method=True)
-        self.GetLogits = channel.unary_unary(
-                '/dflash.DFlashCloud/GetLogits',
-                request_serializer=dflash__service__pb2.LogitsRequest.SerializeToString,
-                response_deserializer=dflash__service__pb2.LogitsResponse.FromString,
-                _registered_method=True)
         self.Verify = channel.unary_unary(
                 '/dflash.DFlashCloud/Verify',
                 request_serializer=dflash__service__pb2.VerifyRequest.SerializeToString,
@@ -60,18 +50,6 @@ class DFlashCloudServicer:
     """Missing associated documentation comment in .proto file."""
 
     def Prefill(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def GetEmbedding(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def GetLogits(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -90,16 +68,6 @@ def add_DFlashCloudServicer_to_server(servicer, server):
                     servicer.Prefill,
                     request_deserializer=dflash__service__pb2.PrefillRequest.FromString,
                     response_serializer=dflash__service__pb2.PrefillResponse.SerializeToString,
-            ),
-            'GetEmbedding': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetEmbedding,
-                    request_deserializer=dflash__service__pb2.EmbeddingRequest.FromString,
-                    response_serializer=dflash__service__pb2.EmbeddingResponse.SerializeToString,
-            ),
-            'GetLogits': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetLogits,
-                    request_deserializer=dflash__service__pb2.LogitsRequest.FromString,
-                    response_serializer=dflash__service__pb2.LogitsResponse.SerializeToString,
             ),
             'Verify': grpc.unary_unary_rpc_method_handler(
                     servicer.Verify,
@@ -134,60 +102,6 @@ class DFlashCloud:
             '/dflash.DFlashCloud/Prefill',
             dflash__service__pb2.PrefillRequest.SerializeToString,
             dflash__service__pb2.PrefillResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def GetEmbedding(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/dflash.DFlashCloud/GetEmbedding',
-            dflash__service__pb2.EmbeddingRequest.SerializeToString,
-            dflash__service__pb2.EmbeddingResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def GetLogits(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/dflash.DFlashCloud/GetLogits',
-            dflash__service__pb2.LogitsRequest.SerializeToString,
-            dflash__service__pb2.LogitsResponse.FromString,
             options,
             channel_credentials,
             insecure,

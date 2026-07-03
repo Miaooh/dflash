@@ -13,7 +13,6 @@ from dflash.model import extract_context_feature, sample
 TARGET_PATH = "/home/xzh/models/Qwen3-4B"
 DEVICE = "cuda:0"
 PORT = 50051
-
 GRPC_OPTIONS = [
     ("grpc.max_send_message_length", 256 * 1024 * 1024),
     ("grpc.max_receive_message_length", 256 * 1024 * 1024),
@@ -21,7 +20,6 @@ GRPC_OPTIONS = [
 
 
 def tensor_to_proto(tensor):
-    """Serialize a CPU tensor to protobuf bytes."""
     buffer = io.BytesIO()
     torch.save(tensor.detach().cpu(), buffer)
     return dflash_service_pb2.TensorProto(
@@ -32,7 +30,6 @@ def tensor_to_proto(tensor):
 
 
 def proto_to_tensor(proto, device):
-    """Deserialize protobuf bytes back to a tensor on the target device."""
     buffer = io.BytesIO(proto.data)
     tensor = torch.load(buffer, map_location="cpu")
     return tensor.to(device)
@@ -69,20 +66,6 @@ class DFlashCloudServicer(dflash_service_pb2_grpc.DFlashCloudServicer):
             first_token_logits=tensor_to_proto(first_token_logits),
         )
 
-    def GetEmbedding(self, request, context):
-        token_ids = proto_to_tensor(request.token_ids, DEVICE)
-        t0 = time.perf_counter()
-        embeddings = self.target.model.embed_tokens(token_ids)
-        print(f"[Cloud] GetEmbedding shape={list(token_ids.shape)}, time={time.perf_counter() - t0:.3f}s")
-        return dflash_service_pb2.EmbeddingResponse(embeddings=tensor_to_proto(embeddings))
-
-    def GetLogits(self, request, context):
-        hidden_states = proto_to_tensor(request.hidden_states, DEVICE)
-        t0 = time.perf_counter()
-        logits = self.target.lm_head(hidden_states)
-        print(f"[Cloud] GetLogits shape={list(hidden_states.shape)}, time={time.perf_counter() - t0:.3f}s")
-        return dflash_service_pb2.LogitsResponse(logits=tensor_to_proto(logits))
-
     def Verify(self, request, context):
         candidate_ids = proto_to_tensor(request.candidate_ids, DEVICE)
         position_ids = proto_to_tensor(request.position_ids, DEVICE)
@@ -103,11 +86,10 @@ class DFlashCloudServicer(dflash_service_pb2_grpc.DFlashCloudServicer):
         print(f"[Cloud] Verify candidates={candidate_ids.shape[1]}, crop_to={crop_to}, time={elapsed:.3f}s")
 
         self.past_key_values = output.past_key_values
-        logits = output.logits
         target_hidden = extract_context_feature(output.hidden_states, self.target.config.dflash_target_layer_ids)
 
         return dflash_service_pb2.VerifyResponse(
-            logits=tensor_to_proto(logits),
+            logits=tensor_to_proto(output.logits),
             hidden_states=tensor_to_proto(target_hidden),
         )
 
