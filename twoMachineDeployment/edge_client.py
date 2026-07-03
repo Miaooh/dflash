@@ -52,10 +52,11 @@ def dflash_generate_edge_cloud(
     block_size=None,
     mask_token_id=None,
 ):
-    """Edge-side DFlash generation using cloud target via gRPC.
+    """Edge-side DFlash generation using cloud target via gRPC (cloud-side acceptance).
 
     The edge holds the draft model plus the target's embed_tokens and lm_head.
-    The cloud holds the full target model and computes hidden states.
+    The cloud holds the full target model, performs verification, and returns
+    the acceptance result together with hidden states for the next round.
     """
     num_input_tokens = input_ids.shape[1]
     max_length = num_input_tokens + max_new_tokens
@@ -71,20 +72,22 @@ def dflash_generate_edge_cloud(
     # --- Prefill on cloud ---
     t0 = time.perf_counter()
     prefill_response = stub.Prefill(
-        dflash_service_pb2.PrefillRequest(input_ids=tensor_to_proto(input_ids))
+        dflash_service_pb2.PrefillRequest(
+            input_ids=tensor_to_proto(input_ids),
+            temperature=temperature,
+        )
     )
     prefill_time = time.perf_counter() - t0
     target_hidden = proto_to_tensor(prefill_response.hidden_states, DEVICE)
-    first_token_logits = proto_to_tensor(prefill_response.first_token_logits, DEVICE)
 
     output_ids[:, :num_input_tokens] = input_ids
-    output_ids[:, num_input_tokens:num_input_tokens + 1] = sample(first_token_logits, temperature)
+    output_ids[:, num_input_tokens:num_input_tokens + 1] = prefill_response.first_token_id
 
     stats = {
         "rounds": 0,
         "prefill_time": prefill_time,
         "total_hidden_states_bytes": len(prefill_response.hidden_states.data),
-        "total_token_candidates_bytes": len(prefill_response.first_token_logits.data),
+        "total_token_candidates_bytes": 0,
         "total_verify_bytes": 0,
         "total_rpc_time": prefill_time,
         "total_draft_time": 0.0,
@@ -118,32 +121,29 @@ def dflash_generate_edge_cloud(
 
             stats["total_token_candidates_bytes"] += len(tensor_to_proto(block_output_ids).data)
 
-        # Cloud verify candidates and return hidden states for next round
+        # Cloud verify candidates and return acceptance result + hidden states
         t0 = time.perf_counter()
         verify_response = stub.Verify(
             dflash_service_pb2.VerifyRequest(
                 candidate_ids=tensor_to_proto(block_output_ids),
                 position_ids=tensor_to_proto(block_position_ids),
                 crop_to=start,
+                temperature=temperature,
             )
         )
         verify_rpc_time = time.perf_counter() - t0
-        stats["total_verify_bytes"] += len(verify_response.logits.data) + len(verify_response.hidden_states.data)
+        stats["total_verify_bytes"] += len(verify_response.hidden_states.data)
         stats["total_rpc_time"] += verify_rpc_time
         stats["total_hidden_states_bytes"] += len(verify_response.hidden_states.data)
 
-        verify_logits = proto_to_tensor(verify_response.logits, DEVICE)
         target_hidden = proto_to_tensor(verify_response.hidden_states, DEVICE)
+        acceptance_length = verify_response.acceptance_length
+        corrected_token = verify_response.corrected_token
 
-        posterior = sample(verify_logits, temperature)
-        acceptance_length = (block_output_ids[:, 1:] == posterior[:, :-1]).cumprod(dim=1).sum(dim=1)[0].item()
-        output_ids[:, start : start + acceptance_length + 1] = block_output_ids[:, : acceptance_length + 1]
-        output_ids[:, start + acceptance_length + 1] = posterior[:, acceptance_length]
+        output_ids[:, start : start + acceptance_length] = block_output_ids[:, :acceptance_length]
+        output_ids[:, start + acceptance_length] = corrected_token
         start += acceptance_length + 1
         stats["acceptance_lengths"].append(acceptance_length + 1)
-
-        if block_size > 1:
-            target_hidden = target_hidden[:, :acceptance_length + 1, :]
 
         if stop_token_ids is not None and any(
             stop_token_id in output_ids[:, num_input_tokens:] for stop_token_id in stop_token_ids

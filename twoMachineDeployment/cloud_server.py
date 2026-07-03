@@ -41,8 +41,12 @@ class DFlashCloudServicer(dflash_service_pb2_grpc.DFlashCloudServicer):
         self.tokenizer = tokenizer
         self.past_key_values = None
 
+    def _extract_hidden(self, output):
+        return extract_context_feature(output.hidden_states, self.target.config.dflash_target_layer_ids)
+
     def Prefill(self, request, context):
         input_ids = proto_to_tensor(request.input_ids, DEVICE)
+        temperature = request.temperature
         seq_len = input_ids.shape[1]
         position_ids = torch.arange(seq_len, device=DEVICE).unsqueeze(0)
 
@@ -58,18 +62,19 @@ class DFlashCloudServicer(dflash_service_pb2_grpc.DFlashCloudServicer):
         print(f"[Cloud] Prefill seq_len={seq_len}, time={elapsed:.3f}s")
 
         self.past_key_values = output.past_key_values
-        target_hidden = extract_context_feature(output.hidden_states, self.target.config.dflash_target_layer_ids)
-        first_token_logits = output.logits[:, -1:, :]
+        target_hidden = self._extract_hidden(output)
+        first_token_id = sample(output.logits[:, -1:, :], temperature).item()
 
         return dflash_service_pb2.PrefillResponse(
             hidden_states=tensor_to_proto(target_hidden),
-            first_token_logits=tensor_to_proto(first_token_logits),
+            first_token_id=first_token_id,
         )
 
     def Verify(self, request, context):
         candidate_ids = proto_to_tensor(request.candidate_ids, DEVICE)
         position_ids = proto_to_tensor(request.position_ids, DEVICE)
         crop_to = request.crop_to
+        temperature = request.temperature
 
         if crop_to > 0 and self.past_key_values is not None:
             self.past_key_values.crop(crop_to)
@@ -86,10 +91,19 @@ class DFlashCloudServicer(dflash_service_pb2_grpc.DFlashCloudServicer):
         print(f"[Cloud] Verify candidates={candidate_ids.shape[1]}, crop_to={crop_to}, time={elapsed:.3f}s")
 
         self.past_key_values = output.past_key_values
-        target_hidden = extract_context_feature(output.hidden_states, self.target.config.dflash_target_layer_ids)
+
+        # Cloud-side token acceptance
+        posterior = sample(output.logits, temperature)  # [1, candidate_len]
+        candidate_len = candidate_ids.shape[1]
+        matches = (candidate_ids[:, 1:] == posterior[:, :-1]).cumprod(dim=1)
+        acceptance_length = matches.sum(dim=1)[0].item() + 1  # include anchor
+        corrected_token = posterior[:, acceptance_length].item()
+
+        target_hidden = self._extract_hidden(output)[:, :acceptance_length + 1, :]
 
         return dflash_service_pb2.VerifyResponse(
-            logits=tensor_to_proto(output.logits),
+            acceptance_length=acceptance_length,
+            corrected_token=corrected_token,
             hidden_states=tensor_to_proto(target_hidden),
         )
 

@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14\x64\x66lash_service.proto\x12\x06\x64\x66lash\"9\n\x0bTensorProto\x12\x0c\n\x04\x64\x61ta\x18\x01 \x01(\x0c\x12\r\n\x05shape\x18\x02 \x03(\x03\x12\r\n\x05\x64type\x18\x03 \x01(\t\"8\n\x0ePrefillRequest\x12&\n\tinput_ids\x18\x01 \x01(\x0b\x32\x13.dflash.TensorProto\"n\n\x0fPrefillResponse\x12*\n\rhidden_states\x18\x01 \x01(\x0b\x32\x13.dflash.TensorProto\x12/\n\x12\x66irst_token_logits\x18\x02 \x01(\x0b\x32\x13.dflash.TensorProto\"w\n\rVerifyRequest\x12*\n\rcandidate_ids\x18\x01 \x01(\x0b\x32\x13.dflash.TensorProto\x12)\n\x0cposition_ids\x18\x02 \x01(\x0b\x32\x13.dflash.TensorProto\x12\x0f\n\x07\x63rop_to\x18\x03 \x01(\x03\"a\n\x0eVerifyResponse\x12#\n\x06logits\x18\x01 \x01(\x0b\x32\x13.dflash.TensorProto\x12*\n\rhidden_states\x18\x02 \x01(\x0b\x32\x13.dflash.TensorProto2\x82\x01\n\x0b\x44\x46lashCloud\x12:\n\x07Prefill\x12\x16.dflash.PrefillRequest\x1a\x17.dflash.PrefillResponse\x12\x37\n\x06Verify\x12\x15.dflash.VerifyRequest\x1a\x16.dflash.VerifyResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14\x64\x66lash_service.proto\x12\x06\x64\x66lash\"9\n\x0bTensorProto\x12\x0c\n\x04\x64\x61ta\x18\x01 \x01(\x0c\x12\r\n\x05shape\x18\x02 \x03(\x03\x12\r\n\x05\x64type\x18\x03 \x01(\t\"M\n\x0ePrefillRequest\x12&\n\tinput_ids\x18\x01 \x01(\x0b\x32\x13.dflash.TensorProto\x12\x13\n\x0btemperature\x18\x02 \x01(\x02\"U\n\x0fPrefillResponse\x12*\n\rhidden_states\x18\x01 \x01(\x0b\x32\x13.dflash.TensorProto\x12\x16\n\x0e\x66irst_token_id\x18\x02 \x01(\x03\"\x8c\x01\n\rVerifyRequest\x12*\n\rcandidate_ids\x18\x01 \x01(\x0b\x32\x13.dflash.TensorProto\x12)\n\x0cposition_ids\x18\x02 \x01(\x0b\x32\x13.dflash.TensorProto\x12\x0f\n\x07\x63rop_to\x18\x03 \x01(\x03\x12\x13\n\x0btemperature\x18\x04 \x01(\x02\"p\n\x0eVerifyResponse\x12\x19\n\x11\x61\x63\x63\x65ptance_length\x18\x01 \x01(\x03\x12\x17\n\x0f\x63orrected_token\x18\x02 \x01(\x03\x12*\n\rhidden_states\x18\x03 \x01(\x0b\x32\x13.dflash.TensorProto2\x82\x01\n\x0b\x44\x46lashCloud\x12:\n\x07Prefill\x12\x16.dflash.PrefillRequest\x1a\x17.dflash.PrefillResponse\x12\x37\n\x06Verify\x12\x15.dflash.VerifyRequest\x1a\x16.dflash.VerifyResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,13 +34,13 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_TENSORPROTO']._serialized_start=32
   _globals['_TENSORPROTO']._serialized_end=89
   _globals['_PREFILLREQUEST']._serialized_start=91
-  _globals['_PREFILLREQUEST']._serialized_end=147
-  _globals['_PREFILLRESPONSE']._serialized_start=149
-  _globals['_PREFILLRESPONSE']._serialized_end=259
-  _globals['_VERIFYREQUEST']._serialized_start=261
-  _globals['_VERIFYREQUEST']._serialized_end=380
-  _globals['_VERIFYRESPONSE']._serialized_start=382
-  _globals['_VERIFYRESPONSE']._serialized_end=479
-  _globals['_DFLASHCLOUD']._serialized_start=482
-  _globals['_DFLASHCLOUD']._serialized_end=612
+  _globals['_PREFILLREQUEST']._serialized_end=168
+  _globals['_PREFILLRESPONSE']._serialized_start=170
+  _globals['_PREFILLRESPONSE']._serialized_end=255
+  _globals['_VERIFYREQUEST']._serialized_start=258
+  _globals['_VERIFYREQUEST']._serialized_end=398
+  _globals['_VERIFYRESPONSE']._serialized_start=400
+  _globals['_VERIFYRESPONSE']._serialized_end=512
+  _globals['_DFLASHCLOUD']._serialized_start=515
+  _globals['_DFLASHCLOUD']._serialized_end=645
 # @@protoc_insertion_point(module_scope)

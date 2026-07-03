@@ -15,20 +15,23 @@ message TensorProto {
 
 message PrefillRequest {
   TensorProto input_ids = 1;
+  float temperature = 2;
 }
 
 message PrefillResponse {
   TensorProto hidden_states = 1;
-  TensorProto first_token_logits = 2;
+  int64 first_token_id = 2;     // sampled first token on cloud
 }
 
 message VerifyRequest {
   TensorProto candidate_ids = 1;
   TensorProto position_ids = 2;
   int64 crop_to = 3;
+  float temperature = 4;
 }
 
 message VerifyResponse {
-  TensorProto logits = 1;              // full-sequence logits for acceptance check
-  TensorProto hidden_states = 2;       // hidden states for next draft round
+  int64 acceptance_length = 1;    // number of accepted tokens (including the anchor)
+  int64 corrected_token = 2;      // target-sampled token at first rejected position
+  TensorProto hidden_states = 3;  // hidden states for accepted + corrected tokens
 }
