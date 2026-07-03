@@ -140,9 +140,11 @@ def dflash_generate_edge_cloud(
         acceptance_length = verify_response.acceptance_length
         corrected_token = verify_response.corrected_token
 
-        output_ids[:, start : start + acceptance_length] = block_output_ids[:, :acceptance_length]
-        output_ids[:, start + acceptance_length] = corrected_token
-        start += acceptance_length + 1
+        # acceptance_length = number of accepted draft tokens (not counting anchor)
+        # block_output_ids[0] is anchor, block_output_ids[1:1+acceptance_length] are accepted draft tokens
+        output_ids[:, start : start + acceptance_length + 1] = block_output_ids[:, :acceptance_length + 1]
+        output_ids[:, start + acceptance_length + 1] = corrected_token
+        start += acceptance_length + 2
         stats["acceptance_lengths"].append(acceptance_length + 1)
 
         if stop_token_ids is not None and any(

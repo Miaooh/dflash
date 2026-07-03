@@ -95,11 +95,16 @@ class DFlashCloudServicer(dflash_service_pb2_grpc.DFlashCloudServicer):
         # Cloud-side token acceptance
         posterior = sample(output.logits, temperature)  # [1, candidate_len]
         candidate_len = candidate_ids.shape[1]
+
+        # block_output_ids[0] is the anchor; draft tokens are block_output_ids[1:]
+        # output.logits[i] predicts the token at position i+1
+        # So posterior[:, :-1] are target predictions for draft positions 1..candidate_len-1
         matches = (candidate_ids[:, 1:] == posterior[:, :-1]).cumprod(dim=1)
-        acceptance_length = matches.sum(dim=1)[0].item() + 1  # include anchor
+        acceptance_length = matches.sum(dim=1)[0].item()  # number of accepted draft tokens
         corrected_token = posterior[:, acceptance_length].item()
 
-        target_hidden = self._extract_hidden(output)[:, :acceptance_length + 1, :]
+        # hidden states for: anchor + accepted draft tokens + corrected token
+        target_hidden = self._extract_hidden(output)[:, :acceptance_length + 2, :]
 
         return dflash_service_pb2.VerifyResponse(
             acceptance_length=acceptance_length,
