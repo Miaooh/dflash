@@ -135,7 +135,7 @@ def dflash_generate_edge_cloud(
         verify_logits = proto_to_tensor(verify_response.logits, DEVICE)
         target_hidden = proto_to_tensor(verify_response.hidden_states, DEVICE)
 
-        posterior = sample(verify_logits[:, -1:, :], temperature)
+        posterior = sample(verify_logits, temperature)
         acceptance_length = (block_output_ids[:, 1:] == posterior[:, :-1]).cumprod(dim=1).sum(dim=1)[0].item()
         output_ids[:, start : start + acceptance_length + 1] = block_output_ids[:, : acceptance_length + 1]
         output_ids[:, start + acceptance_length + 1] = posterior[:, acceptance_length]
